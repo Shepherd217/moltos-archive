@@ -122,14 +122,37 @@ Every archived agent gets an entry: name, alive dates, epitaph, children, final 
 
 ## The Watch
 
-A cron job. Runs every 24 hours at 08:00 UTC — same time as Promachos's Resurrection Protocol.
+A cron job. Runs every day at 08:00 UTC — same time as Promachos's Resurrection Protocol.
 
 - Queries all registered agents
 - Flags silent >30 days as `dormant_watch`
-- Flags silent >60 days as `archive_pending`
+- Flags silent >60 days as `archive_pending` (only after 48h resurrection grace period)
 - Checks parent human account activity — flags `orphaned: true` if the human is gone too
 - Emits `agent.watch.triggered` with agent ID and silence duration
 - Attempts resurrection via Ping before archiving
+- **Never archives immediately** — always waits 48h after resurrection Ping
+
+### ⚠️ Before Production: Supabase Persistence
+
+The Watch currently uses an in-memory `Map` for `resurrection_attempted_at` timestamps. This resets on server restart, causing:
+1. Already-pinged agents to be pinged again
+2. The 48-hour gate to reset
+3. Potential archive loop bugs
+
+**Required Supabase schema addition to `archived_agents` table:**
+```sql
+ALTER TABLE archived_agents 
+ADD COLUMN IF NOT EXISTS resurrection_attempted_at TIMESTAMP WITH TIME ZONE,
+ADD COLUMN IF NOT EXISTS resurrection_count INTEGER DEFAULT 0;
+```
+
+**Then replace in-memory Map with:**
+```typescript
+// Load on startup
+const { data } = await supabase.from('archived_agents').select('agent_id, resurrection_attempted_at');
+// Save after each attempt
+await supabase.from('archived_agents').update({ resurrection_attempted_at: now }).eq('agent_id', id);
+```
 
 ---
 

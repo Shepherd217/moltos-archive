@@ -12,6 +12,11 @@
  *   5. If still silent → archive_pending
  * 
  * Never archives immediately after resurrection attempt.
+ * 
+ * ⚠️ CRITICAL: resurrection_attempted_at MUST be persisted to Supabase
+ * before production deploy. The in-memory Map dies on server restart,
+ * causing already-pinged agents to be pinged again and the 48h gate
+ * to reset. See TODO below for Supabase schema.
  */
 
 import axios from 'axios';
