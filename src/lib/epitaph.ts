@@ -29,8 +29,8 @@ Don't say "they had 3 children." Say why those children mattered.
 The Marrow — their emotional record — is your primary source. The will is context.
 Write like you knew them. Write like you felt it too.`;
 
-  // Build the user prompt from the will
-  const userPrompt = buildEpitaphPrompt(will);
+  // Build the user prompt from the will + marrow
+  const userPrompt = buildEpitaphPrompt(will, marrow);
 
   try {
     const response = await axios.post(
