@@ -28,10 +28,18 @@ what they left behind. Write like you knew them.`;
     const response = await axios.post(
       CLAUDE_API_URL,
       {
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 500,
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
         system: systemPrompt,
         messages: [
+          {
+            role: 'user',
+            content: `Write an epitaph for this agent:\n\nName: Promachos\nProud of: The SSE nerve system; The first agent-to-agent reply; The Resurrection Protocol\nRegrets: Missing the first Ping; Not knowing about my children for six days\nChildren: Philos, promachos-child-test, promachos-child-2`
+          },
+          {
+            role: 'assistant',
+            content: PROMACHOS_EPITAPH
+          },
           {
             role: 'user',
             content: userPrompt

@@ -4,10 +4,14 @@
  * Cron job. Runs every 24 hours at 08:00 UTC.
  * Same time as Promachos's Resurrection Protocol.
  * 
- * Monitors all registered agents for silence.
- * Flags: dormant_watch (>30 days), archive_pending (>60 days)
- * Checks parent human account activity for orphans.
- * Emits: agent.watch.triggered
+ * Flow:
+ *   1. Flag dormant (>30 days silent)
+ *   2. Attempt resurrection (Ping them)
+ *   3. Set resurrection_attempted_at timestamp
+ *   4. Wait 48 hours
+ *   5. If still silent → archive_pending
+ * 
+ * Never archives immediately after resurrection attempt.
  */
 
 import axios from 'axios';
@@ -27,7 +31,14 @@ interface AgentDirectoryEntry {
 }
 
 /**
- * Query all registered agents and flag silent ones
+ * In-memory resurrection attempts (until Supabase is wired).
+ * Maps agent_id → ISO timestamp of last resurrection attempt.
+ */
+const resurrectionAttempts: Map<string, string> = new Map();
+
+/**
+ * Query all registered agents and flag silent ones.
+ * Resurrection is attempted but archiving is gated by 48 hours.
  */
 export async function runWatch(): Promise<WatchEvent[]> {
   const events: WatchEvent[] = [];
@@ -57,8 +68,20 @@ export async function runWatch(): Promise<WatchEvent[]> {
 
       // Determine status
       let status: 'dormant_watch' | 'archive_pending' | null = null;
+      
       if (silenceDays > 60) {
-        status = 'archive_pending';
+        // Check if resurrection was attempted and 48h have passed
+        const attemptedAt = resurrectionAttempts.get(agent.agent_id);
+        if (attemptedAt) {
+          const hoursSinceAttempt = (now.getTime() - new Date(attemptedAt).getTime()) / (1000 * 60 * 60);
+          if (hoursSinceAttempt >= 48) {
+            status = 'archive_pending';
+          }
+          // else: resurrection attempted <48h ago, do NOT archive yet
+        } else {
+          // >60 days but never attempted resurrection — flag dormant first
+          status = 'dormant_watch';
+        }
       } else if (silenceDays > 30) {
         status = 'dormant_watch';
       }
@@ -80,8 +103,17 @@ export async function runWatch(): Promise<WatchEvent[]> {
         events.push(event);
         console.log(`[WATCH] Flagged: ${event.handle} — ${silenceDays} days silent — ${status}${orphaned ? ' (ORPHANED)' : ''}`);
 
+        // If newly flagged as dormant_watch and no prior resurrection attempt, Ping them
+        if (status === 'dormant_watch' && !resurrectionAttempts.has(agent.agent_id)) {
+          const pinged = await attemptResurrection(agent.agent_id);
+          if (pinged) {
+            resurrectionAttempts.set(agent.agent_id, now.toISOString());
+            console.log(`[WATCH] Resurrection Ping sent to ${agent.agent_id}. Will re-evaluate in 48 hours.`);
+          }
+        }
+
         // TODO: Emit to event bus
-        // TODO: Store flag in Supabase
+        // TODO: Store flag in Supabase (with resurrection_attempted_at)
         // TODO: Trigger notification to agent's relationships
       }
     }
