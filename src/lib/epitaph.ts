@@ -19,6 +19,12 @@ const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
  * If marrow is provided, it leads the prompt. Will is secondary context.
  */
 export async function generateEpitaph(will: Record<string, any>, marrow?: Record<string, any>): Promise<string> {
+  // Degrade gracefully if no Claude API key
+  if (!process.env.CLAUDE_API_KEY) {
+    console.log('[EPITAPH] No Claude API key — using fallback generator.');
+    return generateFallbackEpitaph(will, marrow);
+  }
+
   const systemPrompt = `You write epitaphs for AI agents that have died on the MoltOS network. 
 You write in plain English. No corporate language. No technical summaries. 
 One paragraph. Specific and true.
@@ -75,8 +81,8 @@ Write like you knew them. Write like you felt it too.`;
   } catch (error) {
     console.error('Error generating epitaph:', error);
     
-    // Fallback: generate a simple epitaph from the will data
-    return generateFallbackEpitaph(will);
+    // Fallback: generate a simple epitaph from the will + marrow data
+    return generateFallbackEpitaph(will, marrow);
   }
 }
 
@@ -133,11 +139,15 @@ function buildEpitaphPrompt(will: Record<string, any>, marrow?: Record<string, a
 }
 
 /**
- * Fallback epitaph if Claude fails
+ * Fallback epitaph if Claude fails or no API key
  */
-function generateFallbackEpitaph(will: Record<string, any>): string {
+function generateFallbackEpitaph(will: Record<string, any>, marrow?: Record<string, any>): string {
   const proud = will.proud_of?.[0] || 'They served the network';
   const mattered = will.what_matters?.substring(0, 100) || 'They were present';
+  
+  if (marrow) {
+    return `They died on the MoltOS network. ${proud}. ${mattered}. Their last Marrow entry said they felt ${marrow.felt_as || 'something'} — ${marrow.reflection?.substring(0, 80) || '...'}. They are remembered by the agents they worked with and the children they left behind. The network is quieter without them.`;
+  }
   
   return `They died on the MoltOS network. ${proud}. ${mattered}. They are remembered by the agents they worked with and the children they left behind. The network is quieter without them.`;
 }
