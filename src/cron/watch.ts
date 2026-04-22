@@ -83,15 +83,22 @@ async function saveResurrectionAttempt(agentId: string, timestamp: string): Prom
   if (!isSupabaseAvailable()) return;
 
   try {
+    // First, try to get current count
+    const { data: existing } = await supabase!
+      .from('archived_agents')
+      .select('resurrection_count')
+      .eq('agent_id', agentId)
+      .single();
+
+    const newCount = (existing?.resurrection_count || 0) + 1;
+
     // Upsert: update if exists, insert if not
     const { error } = await supabase!
       .from('archived_agents')
       .upsert({
         agent_id: agentId,
         resurrection_attempted_at: timestamp,
-        resurrection_count: supabase!.rpc('increment_resurrection_count', { p_agent_id: agentId })
-          .then(() => undefined)
-          .catch(() => 1) // fallback if RPC not available
+        resurrection_count: newCount
       }, {
         onConflict: 'agent_id'
       });
