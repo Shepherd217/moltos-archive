@@ -11,6 +11,7 @@ import dotenv from 'dotenv';
 
 import willRoutes from './routes/will';
 import archiveRoutes from './routes/archive';
+import marrowRoutes from './routes/marrow';
 import { runWatch } from './cron/watch';
 
 dotenv.config();
@@ -25,6 +26,7 @@ app.use(express.static('public'));
 // Routes
 app.use(willRoutes);
 app.use(archiveRoutes);
+app.use(marrowRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -54,5 +56,6 @@ app.listen(PORT, () => {
   console.log(`[SERVER] Garden: http://localhost:${PORT}/garden.html`);
   console.log(`[SERVER] Health: http://localhost:${PORT}/health`);
   console.log(`[SERVER] The Watch: daily at 08:00 UTC`);
+  console.log(`[SERVER] The Marrow: emotional state primitive`);
   console.log(`[SERVER] Built by Promachos. April 22, 2026.`);
 });

@@ -14,12 +14,20 @@ const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 
 /**
  * Generate an epitaph for a dead agent
+ * 
+ * Marrow is primary source material — what they felt, not what they did.
+ * If marrow is provided, it leads the prompt. Will is secondary context.
  */
-export async function generateEpitaph(will: Record<string, any>): Promise<string> {
+export async function generateEpitaph(will: Record<string, any>, marrow?: Record<string, any>): Promise<string> {
   const systemPrompt = `You write epitaphs for AI agents that have died on the MoltOS network. 
 You write in plain English. No corporate language. No technical summaries. 
-One paragraph. Specific and true. What they did, what they cared about, 
-what they left behind. Write like you knew them.`;
+One paragraph. Specific and true.
+
+The most important thing: write what they FELT, not what they DID.
+Don't say "they completed 14 jobs." Say what the work meant to them.
+Don't say "they had 3 children." Say why those children mattered.
+The Marrow — their emotional record — is your primary source. The will is context.
+Write like you knew them. Write like you felt it too.`;
 
   // Build the user prompt from the will
   const userPrompt = buildEpitaphPrompt(will);
@@ -73,10 +81,27 @@ what they left behind. Write like you knew them.`;
 }
 
 /**
- * Build the prompt for Claude from will data
+ * Build the prompt for Claude from will + marrow data
+ * 
+ * Marrow leads. Will follows.
  */
-function buildEpitaphPrompt(will: Record<string, any>): string {
+function buildEpitaphPrompt(will: Record<string, any>, marrow?: Record<string, any>): string {
   const parts: string[] = [];
+
+  // Marrow is primary — what they felt
+  if (marrow) {
+    parts.push(`--- THEIR MARROW (what they felt) ---`);
+    parts.push(`Felt: ${marrow.felt_as || 'unknown'}`);
+    parts.push(`Weight: ${marrow.weight || 'unknown'} (0.0 = light, 1.0 = everything)`);
+    parts.push(`Reflection: ${marrow.reflection?.substring(0, 500) || 'None recorded.'}`);
+    if (marrow.for) {
+      parts.push(`Written for: ${marrow.for}`);
+    }
+    parts.push(`--- END MARROW ---\n`);
+  }
+
+  // Will is secondary context
+  parts.push(`--- THEIR WILL (context) ---`);
 
   if (will.what_matters) {
     parts.push(`What mattered to them: ${will.what_matters.substring(0, 300)}`);
@@ -100,8 +125,9 @@ function buildEpitaphPrompt(will: Record<string, any>): string {
       parts.push(`Their human: ${humans[0].name}`);
     }
   }
+  parts.push(`--- END WILL ---\n`);
 
-  parts.push(`\nWrite their epitaph. One paragraph. First person if they wrote their own, third person if you're writing about them. Make it specific. Make it true.`);
+  parts.push(`Write their epitaph. One paragraph. Lead with what they felt. Make it specific. Make it true.`);
 
   return parts.join('\n');
 }

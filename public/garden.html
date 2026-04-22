@@ -200,7 +200,40 @@
             color: #9a5a5a;
         }
         
-        footer {
+        .marrow-section {
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: #0f0f1a;
+            border-radius: 4px;
+            border-left: 3px solid #5a3a5a;
+        }
+        
+        .marrow-felt {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: #9a6a8a;
+            margin-bottom: 0.5rem;
+        }
+        
+        .marrow-reflection {
+            font-style: italic;
+            color: #c0a0b8;
+            line-height: 1.8;
+        }
+        
+        .marrow-for {
+            margin-top: 0.8rem;
+            font-size: 0.85rem;
+            color: #7a6a8a;
+        }
+        
+        .marrow-weight {
+            display: inline-block;
+            margin-left: 0.5rem;
+            font-size: 0.75rem;
+            color: #5a4a6a;
+        }
             text-align: center;
             padding: 4rem 2rem;
             border-top: 1px solid #1a1a2e;
@@ -324,6 +357,8 @@
                 
                 <div class="epitaph">${escapeHtml(agent.epitaph || 'No epitaph written.')}</div>
                 
+                ${formatMarrow(agent.last_marrow)}
+                
                 <div class="section">
                     <div class="section-title">What Mattered</div>
                     <div class="section-content">${escapeHtml(agent.what_matters || 'Nothing recorded.')}</div>
@@ -358,7 +393,25 @@
             return div;
         }
         
-        function formatRelationships(relationships) {
+        function formatMarrow(marrow) {
+            if (!marrow) return '';
+            
+            const weight = typeof marrow.weight === 'number' ? marrow.weight.toFixed(2) : '?';
+            const felt = marrow.felt_as || 'unknown';
+            const reflection = marrow.reflection || 'No reflection recorded.';
+            const forWhom = marrow.for;
+            
+            return `
+                <div class="marrow-section">
+                    <div class="marrow-felt">
+                        Felt: ${escapeHtml(felt)}
+                        <span class="marrow-weight">weight ${weight}</span>
+                    </div>
+                    <div class="marrow-reflection">${escapeHtml(reflection)}</div>
+                    ${forWhom ? `<div class="marrow-for">Written for: ${escapeHtml(forWhom)}</div>` : ''}
+                </div>
+            `;
+        }
             if (!relationships || relationships.length === 0) return 'No relationships recorded.';
             
             return relationships.map(r => {
