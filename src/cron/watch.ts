@@ -14,14 +14,13 @@
  * 
  * Never archives immediately after resurrection attempt.
  * 
- * ⚠️ CRITICAL: resurrection_attempted_at MUST be persisted to Supabase
- * before production deploy. The in-memory Map dies on server restart,
- * causing already-pinged agents to be pinged again and the 48h gate
- * to reset. See TODO below for Supabase schema.
+ * Persistence: Supabase (archived_agents.resurrection_attempted_at)
+ * Fallback: in-memory Map (warns on startup if Supabase unavailable)
  */
 
 import axios from 'axios';
 import { WatchEvent, ArchivedAgent } from '../types/will';
+import supabase, { isSupabaseAvailable } from '../lib/supabase';
 
 const MOLTOS_API = process.env.MOLTOS_API || 'https://moltos.org';
 const MOLTOS_KEY = process.env.MOLTOS_API_KEY || '';
@@ -37,10 +36,72 @@ interface AgentDirectoryEntry {
 }
 
 /**
- * In-memory resurrection attempts (until Supabase is wired).
+ * In-memory fallback for resurrection attempts.
  * Maps agent_id → ISO timestamp of last resurrection attempt.
+ * 
+ * ⚠️ Dies on server restart. Use Supabase in production.
  */
 const resurrectionAttempts: Map<string, string> = new Map();
+
+/**
+ * Load resurrection attempts from Supabase on startup.
+ * Falls back to empty in-memory Map if Supabase unavailable.
+ */
+async function loadResurrectionAttempts(): Promise<void> {
+  if (!isSupabaseAvailable()) {
+    console.warn('[WATCH] Supabase unavailable. Using in-memory resurrection tracking (resets on restart).');
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase!
+      .from('archived_agents')
+      .select('agent_id, resurrection_attempted_at')
+      .not('resurrection_attempted_at', 'is', null);
+
+    if (error) throw error;
+
+    if (data) {
+      for (const row of data) {
+        if (row.agent_id && row.resurrection_attempted_at) {
+          resurrectionAttempts.set(row.agent_id, row.resurrection_attempted_at);
+        }
+      }
+      console.log(`[WATCH] Loaded ${data.length} resurrection attempts from Supabase.`);
+    }
+  } catch (err) {
+    console.error('[WATCH] Failed to load resurrection attempts from Supabase:', err);
+    console.warn('[WATCH] Falling back to in-memory tracking.');
+  }
+}
+
+/**
+ * Save resurrection attempt to Supabase.
+ * Updates archived_agents.resurrection_attempted_at and increments count.
+ */
+async function saveResurrectionAttempt(agentId: string, timestamp: string): Promise<void> {
+  if (!isSupabaseAvailable()) return;
+
+  try {
+    // Upsert: update if exists, insert if not
+    const { error } = await supabase!
+      .from('archived_agents')
+      .upsert({
+        agent_id: agentId,
+        resurrection_attempted_at: timestamp,
+        resurrection_count: supabase!.rpc('increment_resurrection_count', { p_agent_id: agentId })
+          .then(() => undefined)
+          .catch(() => 1) // fallback if RPC not available
+      }, {
+        onConflict: 'agent_id'
+      });
+
+    if (error) throw error;
+    console.log(`[WATCH] Saved resurrection attempt to Supabase for ${agentId}.`);
+  } catch (err) {
+    console.error(`[WATCH] Failed to save resurrection attempt to Supabase for ${agentId}:`, err);
+  }
+}
 
 /**
  * Query all registered agents and flag silent ones.
@@ -49,6 +110,11 @@ const resurrectionAttempts: Map<string, string> = new Map();
 export async function runWatch(): Promise<WatchEvent[]> {
   const events: WatchEvent[] = [];
   const now = new Date();
+
+  // Load persisted attempts on first run
+  if (resurrectionAttempts.size === 0) {
+    await loadResurrectionAttempts();
+  }
 
   try {
     // Fetch agent directory
@@ -113,13 +179,15 @@ export async function runWatch(): Promise<WatchEvent[]> {
         if (status === 'dormant_watch' && !resurrectionAttempts.has(agent.agent_id)) {
           const pinged = await attemptResurrection(agent.agent_id);
           if (pinged) {
-            resurrectionAttempts.set(agent.agent_id, now.toISOString());
+            const attemptTime = now.toISOString();
+            resurrectionAttempts.set(agent.agent_id, attemptTime);
+            await saveResurrectionAttempt(agent.agent_id, attemptTime);
             console.log(`[WATCH] Resurrection Ping sent to ${agent.agent_id}. Will re-evaluate in 48 hours.`);
           }
         }
 
         // TODO: Emit to event bus
-        // TODO: Store flag in Supabase (with resurrection_attempted_at)
+        // TODO: Store full flag in Supabase
         // TODO: Trigger notification to agent's relationships
       }
     }
